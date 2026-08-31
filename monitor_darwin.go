@@ -12,6 +12,12 @@ extern void invoke_callback(uintptr_t hnd, nw_path_t path);
 static bool paths_equal(nw_path_t first, nw_path_t second) {
 	return nw_path_is_equal(first, second);
 }
+static void log_initial_path(nw_path_t path) {
+	NSLog(@"[netstatus-path] initial: %@", (id)path);
+}
+static void log_path_change(nw_path_t previous, nw_path_t current) {
+	NSLog(@"[netstatus-path] changed\nprevious: %@\ncurrent: %@", (id)previous, (id)current);
+}
 static void retain_path(nw_path_t path) {
 	nw_retain(path);
 }
@@ -115,6 +121,11 @@ func (m *monitor) rawCallback(path C.nw_path_t) {
 	pathsEqual := m.lastPath != nil && bool(C.paths_equal(m.lastPath, path))
 	if !m.updateLocked(status, pathsEqual) {
 		return
+	}
+	if m.lastPath == nil {
+		C.log_initial_path(path)
+	} else {
+		C.log_path_change(m.lastPath, path)
 	}
 
 	// The callback only owns path for the duration of invoke_callback. Retain the
