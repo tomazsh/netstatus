@@ -8,11 +8,14 @@ import (
 type Status struct {
 	Available bool
 	Kind      InterfaceKind
+	// Generation identifies the connection-relevant network path observed by this monitor. It begins
+	// at 1 and advances when that path changes. Unsupported platforms report 0.
+	Generation uint64
 	// More in future, e.g. ssid, IsPublicNetwork etc.
 }
 
 func (s Status) String() string {
-	return fmt.Sprintf("Available: %t, Kind: %s", s.Available, s.Kind)
+	return fmt.Sprintf("Available: %t, Kind: %s, Generation: %d", s.Available, s.Kind, s.Generation)
 }
 
 type InterfaceKind string

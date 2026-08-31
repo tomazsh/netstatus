@@ -98,6 +98,11 @@ func (m *monitor) rawCallback(isConnected bool) {
 	defer m.callbackMu.Unlock()
 
 	m.mu.Lock()
+	if m.last == nil {
+		status.Generation = 1
+	} else {
+		status.Generation = m.last.Generation + 1
+	}
 
 	// Initial received state shouldn't count as a change.
 	var changed bool
