@@ -9,6 +9,15 @@ package netstatus
 #import <Network/Network.h>
 
 extern void invoke_callback(uintptr_t hnd, nw_path_t path);
+static bool paths_equal(nw_path_t first, nw_path_t second) {
+	return nw_path_is_equal(first, second);
+}
+static void retain_path(nw_path_t path) {
+	nw_retain(path);
+}
+static void release_path(nw_path_t path) {
+	nw_release(path);
+}
 static void set_update_handler(nw_path_monitor_t monitor, uintptr_t cb_hnd) {
 	nw_path_monitor_set_update_handler(monitor, ^(nw_path_t path) {
 		// The docs say retain/release are needed, though other implementations don't do so?
@@ -43,6 +52,8 @@ type monitor struct {
 	rcvdOnce sync.Once
 
 	callbackMu sync.Mutex
+	lastPath   C.nw_path_t
+	cancelled  bool
 	mu         sync.Mutex
 	last       *Status
 	onChange   func(Status)
@@ -92,16 +103,57 @@ func startMonitor(ctx context.Context) *monitor {
 }
 
 func (m *monitor) rawCallback(path C.nw_path_t) {
-	m.update(makeStatus(path))
+	status := makeStatus(path)
+
+	m.callbackMu.Lock()
+	defer m.callbackMu.Unlock()
+
+	if m.cancelled {
+		return
+	}
+
+	pathsEqual := m.lastPath != nil && bool(C.paths_equal(m.lastPath, path))
+	if !m.updateLocked(status, pathsEqual) {
+		return
+	}
+
+	// The callback only owns path for the duration of invoke_callback. Retain the
+	// path that will be used to compare the next update, and release the previous
+	// one after replacing it.
+	C.retain_path(path)
+	previousPath := m.lastPath
+	m.lastPath = path
+	if previousPath != nil {
+		C.release_path(previousPath)
+	}
 }
 
-func (m *monitor) update(status Status) {
+func (m *monitor) update(status Status, pathsEqual bool) {
 	// Serialize native updates while allowing Current and OnChange to be called
 	// safely from the user callback.
 	m.callbackMu.Lock()
 	defer m.callbackMu.Unlock()
 
+	if m.cancelled {
+		return
+	}
+	m.updateLocked(status, pathsEqual)
+}
+
+// updateLocked applies a path update and reports whether it was published.
+// callbackMu must be held by the caller.
+func (m *monitor) updateLocked(status Status, pathsEqual bool) bool {
 	m.mu.Lock()
+	if m.last != nil && pathsEqual && m.last.Available == status.Available && m.last.Kind == status.Kind {
+		m.mu.Unlock()
+		return false
+	}
+
+	if m.last == nil {
+		status.Generation = 1
+	} else {
+		status.Generation = m.last.Generation + 1
+	}
 
 	var changed bool
 	if m.last == nil {
@@ -117,6 +169,21 @@ func (m *monitor) update(status Status) {
 	// Only fire callback if the status actually changed
 	if changed {
 		cb(status)
+	}
+	return true
+}
+
+func (m *monitor) cancel() {
+	m.callbackMu.Lock()
+	defer m.callbackMu.Unlock()
+
+	if m.cancelled {
+		return
+	}
+	m.cancelled = true
+	if m.lastPath != nil {
+		C.release_path(m.lastPath)
+		m.lastPath = nil
 	}
 }
 
@@ -188,7 +255,7 @@ func invoke_callback(hnd C.uintptr_t, path C.nw_path_t) {
 //export invoke_cancel
 func invoke_cancel(hnd C.uintptr_t) {
 	callbacksMu.Lock()
-	_, ok := callbacks[hnd]
+	m, ok := callbacks[hnd]
 	if ok {
 		delete(callbacks, hnd)
 	}
@@ -196,6 +263,7 @@ func invoke_cancel(hnd C.uintptr_t) {
 
 	// Guard against an unexpected duplicate native cancellation callback.
 	if ok {
+		m.cancel()
 		cgo.Handle(hnd).Delete()
 	}
 }

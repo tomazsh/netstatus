@@ -57,3 +57,35 @@ func TestOnChangeCanAccessMonitor(t *testing.T) {
 		t.Fatal("status updates did not finish")
 	}
 }
+
+func TestPathGenerationAdvancesForEquivalentStatus(t *testing.T) {
+	m := &monitor{
+		rcvd:     make(chan struct{}),
+		onChange: func(Status) {},
+	}
+	m.rawCallback(true)
+
+	if got := m.Current(context.Background()); got.Generation != 1 {
+		t.Fatalf("initial generation: got %d, want 1", got.Generation)
+	}
+
+	changed := make(chan Status, 1)
+	m.OnChange(func(status Status) { changed <- status })
+	m.rawCallback(true)
+
+	select {
+	case got := <-changed:
+		if !got.Available || got.Kind != InterfaceTypeUnknown {
+			t.Fatalf("coarse status changed: got %+v", got)
+		}
+		if got.Generation != 2 {
+			t.Fatalf("updated generation: got %d, want 2", got.Generation)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("equivalent connectivity update was suppressed")
+	}
+
+	if got := m.Current(context.Background()); got.Generation != 2 {
+		t.Fatalf("current generation: got %d, want 2", got.Generation)
+	}
+}

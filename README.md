@@ -47,3 +47,8 @@ m.OnChange(func(s netstatus.Status) {
     }
 })
 ```
+
+`Status.Generation` identifies the native network path observed by a monitor. The initial path has
+generation 1, and the generation advances for every distinct native path, including transitions
+between Wi-Fi networks that leave `Available` and `Kind` unchanged. Unsupported platforms report
+generation 0.
