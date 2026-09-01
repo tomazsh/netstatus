@@ -1,8 +1,8 @@
 # netstatus - Network Status Monitor
 `netstatus` allows you to check and monitor the internet connectivity status of the host operating
-system using OS native APIs (via cgo).
+system using OS native APIs.
 
-Supported on iOS, macOS and Windows. Noop on other platforms - feel free to contribute.
+Supported on iOS, macOS, Windows and Linux. Noop on other platforms - feel free to contribute.
 
 ## Why is this useful?
 When internet connectivity is lost, e.g. due to a switch between WiFi networks, sockets IO ops may
@@ -20,7 +20,7 @@ In practice, the OS-provided internet connectivity status proves to be very accu
 - Be easy to (cross) compile using zig cc/zig c++
 
 ## Compilation
-This package requires cgo.
+The iOS, macOS and Windows implementations require cgo. The Linux implementation is pure Go.
 The easiest way to compile is using zig, for example, to build for the current platform:
 ```sh
 CGO_ENABLED=1 "CC=zig cc" "CXX=zig c++" go build example/main.go

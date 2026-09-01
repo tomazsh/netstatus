@@ -28,7 +28,7 @@ const (
 )
 
 type Monitor struct {
-	*monitor // provided by cgo implementations
+	*monitor // provided by platform implementations
 }
 
 // StartMonitor starts monitoring the network status of the current device. This can then be
